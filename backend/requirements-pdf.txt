@@ -1,0 +1,2 @@
+-r requirements.txt
+pdf2docx>=0.5.8,<0.6

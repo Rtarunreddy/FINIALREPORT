@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+.pytest_cache/
+backend/data/
+node_modules/
+test-assets/
+*.log
+.env
+*.zip
+*.db
