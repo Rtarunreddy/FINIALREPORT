@@ -51,6 +51,8 @@ class Settings:
     stripe_team_price: str = ""
     google_client_id: str = ""
     google_client_secret: str = ""
+    resend_api_key: str = ""
+    email_from: str = ""
     public_url: str = "http://127.0.0.1:8000"
     cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8000", "http://127.0.0.1:8000"])
 
@@ -67,6 +69,10 @@ class Settings:
     @property
     def google_enabled(self) -> bool:
         return bool(self.google_client_id and self.google_client_secret)
+
+    @property
+    def password_reset_enabled(self) -> bool:
+        return bool(self.resend_api_key and self.email_from)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -85,4 +91,5 @@ class Settings:
             stripe_pro_price=env("STRIPE_PRO_PRICE_ID", ""), stripe_team_price=env("STRIPE_TEAM_PRICE_ID", ""),
             soffice_path=env("REPORT_READY_SOFFICE", ""),
             google_client_id=env("GOOGLE_CLIENT_ID", ""), google_client_secret=env("GOOGLE_CLIENT_SECRET", ""),
+            resend_api_key=env("RESEND_API_KEY", ""), email_from=env("REPORT_READY_EMAIL_FROM", ""),
             public_url=env("REPORT_READY_PUBLIC_URL", "http://127.0.0.1:8000").rstrip("/"))

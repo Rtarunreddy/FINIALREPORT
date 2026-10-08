@@ -38,8 +38,8 @@ const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
   throw new Error('Unexpected request: ' + url);
 });
 
-beforeEach(() => {quotaError = false; localStorage.setItem('report-ready-auto-format', '0'); failUpload = false; networkFailure = false; uploadCount = 0; pollCount = 0; jobFails = false; minPolls = 1; pdfEnabled = false; fetchMock.mockClear(); vi.stubGlobal('fetch', fetchMock);});
-afterEach(() => {cleanup(); vi.unstubAllGlobals();});
+beforeEach(() => {window.history.replaceState({}, '', '/'); quotaError = false; localStorage.setItem('report-ready-auto-format', '0'); failUpload = false; networkFailure = false; uploadCount = 0; pollCount = 0; jobFails = false; minPolls = 1; pdfEnabled = false; fetchMock.mockClear(); vi.stubGlobal('fetch', fetchMock);});
+afterEach(() => {cleanup(); window.history.replaceState({}, '', '/'); vi.unstubAllGlobals();});
 
 async function chooseReport() {
   const input = await screen.findByLabelText('Upload your report');
@@ -140,6 +140,38 @@ describe('sign-in', () => {
     expect(await screen.findByLabelText('Upload your report')).toBeTruthy();
     expect(JSON.parse(calls[0].body)).toEqual({email: 'new@example.com', password: 'correct horse battery'});
     expect(screen.getByText(/new@example.com/)).toBeTruthy();
+  });
+
+  it('requests a generic password recovery email', async () => {
+    const calls: {url: string; body: string}[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/auth/status')) return Response.json({required: true, authenticated: false, retentionHours: 24, passwordResetEnabled: true});
+      if (url.endsWith('/auth/password-reset/request')) { calls.push({url, body: String(init?.body)}); return Response.json({message: 'If an account with that email can reset a password, instructions will be sent shortly.'}); }
+      throw new Error('Unexpected request: ' + url);
+    }));
+    render(<App/>);
+    fireEvent.click(await screen.findByRole('button', {name: 'Forgot password?'}));
+    fireEvent.change(screen.getByLabelText('Email'), {target: {value: 'ada@example.com'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Send recovery email'}));
+    expect((await screen.findByRole('status')).textContent).toContain('instructions will be sent shortly');
+    expect(JSON.parse(calls[0].body)).toEqual({email: 'ada@example.com'});
+  });
+
+  it('submits a password reset from the emailed token link', async () => {
+    window.history.replaceState({}, '', '/#token=one-time-token');
+    let submitted: unknown;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/auth/status')) return Response.json({required: true, authenticated: false, retentionHours: 24, passwordResetEnabled: true});
+      if (url.endsWith('/auth/password-reset/confirm')) { submitted = JSON.parse(String(init?.body)); return Response.json({message: 'Your password has been reset. You can now sign in.'}); }
+      throw new Error('Unexpected request: ' + url);
+    }));
+    render(<App/>);
+    fireEvent.change(await screen.findByLabelText('New password (10+ characters)'), {target: {value: 'a brand new password'}});
+    fireEvent.change(screen.getByLabelText('Confirm new password'), {target: {value: 'a brand new password'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Reset password'}));
+    expect((await screen.findByRole('status')).textContent).toContain('You can now sign in');
+    expect(submitted).toEqual({token: 'one-time-token', password: 'a brand new password'});
+    expect(window.location.search).toBe('');
   });
 });
 

@@ -32,6 +32,10 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET          # optional
         sync: false
+      - key: RESEND_API_KEY                # needed for password recovery
+        sync: false
+      - key: REPORT_READY_EMAIL_FROM       # verified Resend sender, e.g. Report Ready <no-reply@example.com>
+        sync: false
       - key: REPORT_READY_WORKERS          # in-process job workers; set 0 if you run `python -m app.worker` as a separate service
         value: "2"
       - key: REPORT_READY_SESSION_SECRET

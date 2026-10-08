@@ -1,3 +1,6 @@
+import hashlib
+from datetime import timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -6,7 +9,7 @@ from conftest import SECRET, build, sign_up
 
 
 def test_register_login_logout_cycle(cloud):
-    assert cloud.get("/api/auth/status").json() == {"required": True, "authenticated": False, "retentionHours": 24, "user": None, "googleEnabled": False}
+    assert cloud.get("/api/auth/status").json() == {"required": True, "authenticated": False, "retentionHours": 24, "user": None, "googleEnabled": False, "passwordResetEnabled": False}
     r = cloud.post("/api/auth/register", json={"email": "  Ada@Example.COM ", "password": "correct horse battery"})
     assert r.status_code == 200 and r.json()["user"] == {"email": "ada@example.com", "plan": "free"}
     cookie = r.headers["set-cookie"].lower()
@@ -36,6 +39,50 @@ def test_login_throttle(cloud):
     body = {"email": "a@example.com", "password": "wrong password!!"}
     codes = [cloud.post("/api/auth/login", json=body).status_code for _ in range(12)]
     assert codes[:10] == [401] * 10 and codes[10:] == [429, 429]
+
+
+def test_password_reset_is_generic_and_one_time(tmp_path, monkeypatch):
+    from app.routers import auth
+
+    delivered = []
+    monkeypatch.setattr(auth, "send_password_reset_email", lambda settings, email, token: delivered.append((email, token)))
+    app = build(tmp_path, resend_api_key="test-key", email_from="Report Ready <no-reply@example.com>",
+                public_url="https://reports.example.com")
+    with TestClient(app) as client:
+        registered = client.post("/api/auth/register", json={"email": "ada@example.com", "password": "correct horse battery"})
+        assert registered.status_code == 200
+        unknown = client.post("/api/auth/password-reset/request", json={"email": "unknown@example.com"})
+        known = client.post("/api/auth/password-reset/request", json={"email": "ada@example.com"})
+        assert unknown.status_code == known.status_code == 200
+        assert unknown.json() == known.json()
+        assert len(delivered) == 1 and delivered[0][0] == "ada@example.com"
+        from app.db_models import PasswordResetToken, utcnow
+        token = delivered[0][1]
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        with app.state.session_factory() as db:
+            assert db.get(PasswordResetToken, token_hash) is not None
+            assert db.get(PasswordResetToken, token) is None
+
+        response = client.post("/api/auth/password-reset/confirm", json={"token": token, "password": "a brand new password"})
+        assert response.status_code == 200
+        client.post("/api/auth/logout")
+        assert client.post("/api/auth/login", json={"email": "ada@example.com", "password": "a brand new password"}).status_code == 200
+        reused = client.post("/api/auth/password-reset/confirm", json={"token": token, "password": "another new password"})
+        assert reused.status_code == 400 and "invalid or has expired" in reused.json()["detail"]
+
+        client.post("/api/auth/password-reset/request", json={"email": "ada@example.com"})
+        expired_hash = hashlib.sha256(delivered[-1][1].encode()).hexdigest()
+        with app.state.session_factory() as db:
+            expired = db.get(PasswordResetToken, expired_hash)
+            expired.expires_at = utcnow() - timedelta(seconds=1)
+            db.commit()
+        response = client.post("/api/auth/password-reset/confirm", json={"token": delivered[-1][1], "password": "another new password"})
+        assert response.status_code == 400 and "invalid or has expired" in response.json()["detail"]
+
+
+def test_password_reset_requires_email_configuration(cloud):
+    response = cloud.post("/api/auth/password-reset/request", json={"email": "a@example.com"})
+    assert response.status_code == 503
 
 
 def test_session_token_tamper_and_expiry():
@@ -74,7 +121,8 @@ def test_local_mode_needs_no_sign_in(client):
 
 def test_every_api_route_requires_sign_in(cloud):
     public = {("GET", "/api/billing/plans"), ("POST", "/api/billing/webhook"), ("GET", "/api/health"), ("GET", "/api/auth/status"), ("POST", "/api/auth/register"), ("POST", "/api/auth/login"),
-              ("POST", "/api/auth/logout"), ("GET", "/api/auth/google/login"), ("GET", "/api/auth/google/callback")}
+              ("POST", "/api/auth/logout"), ("GET", "/api/auth/google/login"), ("GET", "/api/auth/google/callback"),
+              ("POST", "/api/auth/password-reset/request"), ("POST", "/api/auth/password-reset/confirm")}
     ident = "00000000-0000-4000-8000-000000000000"
     checked = 0
     for path, methods in cloud.app.openapi()["paths"].items():

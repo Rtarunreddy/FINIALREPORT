@@ -1,24 +1,29 @@
 from __future__ import annotations
 
+import hashlib
 import hmac
+import html
+import logging
 import secrets
+from datetime import timedelta
 from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 from ..plans import effective_plan
 
-from ..db_models import User
+from ..db_models import PasswordResetToken, User, utcnow
 from ..deps import current_user, get_db
 from ..security import COOKIE, check_password_strength, hash_password, make_session, normalize_email, read_session, verify_password
 from ..services import retention_hours
 
 router = APIRouter(prefix="/api/auth")
+LOG = logging.getLogger(__name__)
 GOOGLE_AUTH, GOOGLE_TOKEN, GOOGLE_USERINFO = "https://accounts.google.com/o/oauth2/v2/auth", "https://oauth2.googleapis.com/token", "https://openidconnect.googleapis.com/v1/userinfo"
 
 
@@ -26,6 +31,42 @@ class Credentials(BaseModel):
     model_config = ConfigDict(extra="forbid")
     email: str
     password: str
+
+
+class ResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: str = Field(max_length=320)
+
+
+class ResetPassword(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    token: str = Field(min_length=32, max_length=128)
+    password: str
+
+
+RESET_REQUEST_MESSAGE = "If an account with that email can reset a password, instructions will be sent shortly."
+RESET_INVALID_MESSAGE = "This password reset link is invalid or has expired. Request a new one."
+
+
+def send_password_reset_email(settings, email: str, token: str):
+    reset_url = html.escape(f"{settings.public_url}/#token={token}", quote=True)
+    with httpx.Client(timeout=10) as client:
+        response = client.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {settings.resend_api_key}"},
+            json={
+                "from": settings.email_from,
+                "to": [email],
+                "subject": "Reset your Report Ready password",
+                "html": (
+                    "<p>We received a request to reset your Report Ready password.</p>"
+                    f'<p><a href="{reset_url}">Choose a new password</a></p>'
+                    "<p>This link expires in 30 minutes. If you did not request this, "
+                    "you can ignore this email.</p>"
+                ),
+            },
+        )
+        response.raise_for_status()
 
 
 def attach_session(response, request: Request, user: User):
@@ -50,7 +91,8 @@ def auth_status(request: Request, db: Session = Depends(get_db)):
     user = current_user(request, db) if s.local_mode else session_user(request, db)
     hours = retention_hours(s, user) if user else s.free_retention_hours
     return {"required": not s.local_mode, "authenticated": user is not None, "retentionHours": hours,
-            "user": public_user(user) if not s.local_mode else None, "googleEnabled": s.google_enabled}
+            "user": public_user(user) if not s.local_mode else None, "googleEnabled": s.google_enabled,
+            "passwordResetEnabled": s.password_reset_enabled}
 
 
 @router.post("/register")
@@ -76,6 +118,77 @@ def login(body: Credentials, request: Request, db: Session = Depends(get_db)):
         throttle.fail(key); raise HTTPException(401, "Incorrect email or password.")
     throttle.reset(key)
     return attach_session(JSONResponse({"authenticated": True, "user": public_user(user)}), request, user)
+
+
+@router.post("/password-reset/request")
+def request_password_reset(body: ResetRequest, request: Request, db: Session = Depends(get_db)):
+    settings = request.app.state.settings
+    if settings.local_mode:
+        raise HTTPException(400, "Password recovery is not used in local mode.")
+    if not settings.password_reset_enabled:
+        raise HTTPException(503, "Password recovery is not configured yet.")
+    email = (body.email or "").strip().lower()
+    key = f"password-reset|{request.client.host if request.client else '?'}"
+    throttle = request.app.state.throttle
+    if throttle.blocked(key):
+        return {"message": RESET_REQUEST_MESSAGE}
+    throttle.fail(key)
+    try:
+        normalized = normalize_email(email)
+    except ValueError:
+        return {"message": RESET_REQUEST_MESSAGE}
+    user = db.scalars(select(User).where(User.email == normalized, User.password_hash.is_not(None))).first()
+    if user is None:
+        return {"message": RESET_REQUEST_MESSAGE}
+
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    now = utcnow()
+    db.query(PasswordResetToken).filter(
+        (PasswordResetToken.expires_at <= now) | (PasswordResetToken.used_at.is_not(None))
+    ).delete(synchronize_session=False)
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.used_at.is_(None),
+    ).delete(synchronize_session=False)
+    db.add(PasswordResetToken(token_hash=token_hash, user_id=user.id, created_at=now,
+                              expires_at=now + timedelta(minutes=30)))
+    db.commit()
+    try:
+        send_password_reset_email(settings, user.email, token)
+    except httpx.HTTPError:
+        LOG.exception("Password reset email delivery failed")
+        db.query(PasswordResetToken).filter(PasswordResetToken.token_hash == token_hash).delete()
+        db.commit()
+    return {"message": RESET_REQUEST_MESSAGE}
+
+
+@router.post("/password-reset/confirm")
+def confirm_password_reset(body: ResetPassword, request: Request, db: Session = Depends(get_db)):
+    if request.app.state.settings.local_mode:
+        raise HTTPException(400, "Password recovery is not used in local mode.")
+    try:
+        check_password_strength(body.password)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    token_hash = hashlib.sha256(body.token.encode()).hexdigest()
+    now = utcnow()
+    reset = db.scalars(
+        select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash).with_for_update()
+    ).first()
+    if reset is None or reset.used_at is not None or reset.expires_at <= now:
+        raise HTTPException(400, RESET_INVALID_MESSAGE)
+    user = db.get(User, reset.user_id)
+    if user is None:
+        raise HTTPException(400, RESET_INVALID_MESSAGE)
+    user.password_hash = hash_password(body.password)
+    reset.used_at = now
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.token_hash != token_hash,
+    ).delete(synchronize_session=False)
+    db.commit()
+    return {"message": "Your password has been reset. You can now sign in."}
 
 
 @router.post("/logout")

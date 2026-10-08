@@ -16,7 +16,7 @@ type Summary = {rows: SummaryRow[]; highlights: string[]};
 type Result = {id: string; report: {changed: Record<string, number>; formatting_preview: Record<string, string>; preserved: string[]; manual: string; summary?: Summary}};
 type Job = {id: string; kind: 'format' | 'pdf'; status: 'queued' | 'running' | 'done' | 'failed'; error: string | null; outputId: string | null; report: (Result['report'] & {note?: string; pages?: number}) | null};
 type Health = {pdfConversion: boolean; pdfExport: boolean; retentionHours: number};
-type Auth = {required: boolean; authenticated: boolean; retentionHours: number; user?: {email: string; plan: string} | null; googleEnabled?: boolean};
+type Auth = {required: boolean; authenticated: boolean; retentionHours: number; user?: {email: string; plan: string} | null; googleEnabled?: boolean; passwordResetEnabled?: boolean};
 const base: TextStyle = {font: 'Times New Roman', size: 12, alignment: 'justify', lineSpacing: 1.5, before: 0, after: 6};
 const fallback: Profile = {id: 'generic', name: 'Generic university report', page: {size: 'Existing report', top: 1, bottom: 1, left: 1.25, right: 1, columns: 0}, body: base,
   headings: {h1: {...base, size: 16, alignment: 'left', lineSpacing: 1.15, before: 18, after: 10, bold: true}, h2: {...base, size: 14, alignment: 'left', lineSpacing: 1.15, before: 14, after: 8, bold: true}, h3: {...base, alignment: 'left', lineSpacing: 1.15, before: 10, bold: true}},
@@ -62,8 +62,12 @@ export function App() {
   const [templatesVersion, setTemplatesVersion] = useState(0);
   const [auth, setAuth] = useState<Auth | null>(null);
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [email, setEmail] = useState('');
   const [creating, setCreating] = useState(false);
+  const [forgotPassword, setForgotPassword] = useState(false);
+  const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('token') || '');
+  const [authSubmitted, setAuthSubmitted] = useState(false);
   const [file, setFile] = useState<Uploaded | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [profile, setProfile] = useState<Profile>(structuredClone(fallback));
@@ -112,6 +116,29 @@ export function App() {
       setPassword('');
       setAuth(current => ({required: true, retentionHours: 24, ...current, authenticated: true, user: response.user ?? null}));
       say('Signed in. Uploaded copies are automatically deleted after the retention period.');
+    });
+  }
+
+  function requestPasswordReset(event: React.FormEvent) {
+    event.preventDefault();
+    setAuthSubmitted(false);
+    void run('Sending recovery instructions…', async () => {
+      const response = await request<{message: string}>('/auth/password-reset/request', jsonPost({email}));
+      setAuthSubmitted(true);
+      say(response.message);
+    });
+  }
+
+  function resetPassword(event: React.FormEvent) {
+    event.preventDefault();
+    if (password !== confirmPassword) { say('The passwords do not match.', true); return; }
+    setAuthSubmitted(false);
+    void run('Resetting your password…', async () => {
+      const response = await request<{message: string}>('/auth/password-reset/confirm', jsonPost({token: resetToken, password}));
+      setPassword(''); setConfirmPassword(''); setResetToken(''); setForgotPassword(false); setCreating(false);
+      window.history.replaceState({}, '', window.location.pathname);
+      setAuthSubmitted(true);
+      say(response.message);
     });
   }
 
@@ -196,7 +223,8 @@ export function App() {
   const isPdf = file?.name.toLowerCase().endsWith('.pdf');
   const toggleOptions: [keyof Extras, string][] = [['normalizeTables', 'Align and format table text'], ['normalizeCaptions', 'Format figure and table captions'], ['resetBodyIndents', 'Remove stray body indents'], ['centerImages', 'Center standalone inline images'], ['fitImages', 'Fit images inside page and column margins'], ['normalizeHeadersFooters', 'Align existing headers and footers'], ['startChaptersOnNewPage', 'Start Heading 1 chapters on a new page']];
   if (!auth) return <main><div className="empty"><h1>Report Ready</h1><p>Connecting to the service…</p></div></main>;
-  if (auth.required && !auth.authenticated) return <main><div className="empty"><h1>Report Ready</h1><p>{creating ? 'Create an account to format your reports.' : 'Sign in to format your reports.'}</p><form onSubmit={signIn} className="login"><label className="field"><span>Email</span><input autoFocus required type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)}/></label><label className="field"><span>Password{creating ? ' (10+ characters)' : ''}</span><input required type="password" minLength={creating ? 10 : undefined} autoComplete={creating ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)}/></label><button className="primary" disabled={!!busy}>{creating ? 'Create account' : 'Sign in'}</button></form>{auth.googleEnabled && <p><a href="/api/auth/google/login">Continue with Google</a></p>}<p><button type="button" className="link" onClick={() => setCreating(value => !value)}>{creating ? 'I already have an account' : 'Create an account'}</button></p>{notice.error && <p className="notice error" role="alert">{notice.text}</p>}</div></main>;
+  if (auth.required && !auth.authenticated && resetToken) return <main><div className="empty"><h1>Reset your password</h1><p>Choose a new password for your Report Ready account.</p><form onSubmit={resetPassword} className="login"><label className="field"><span>New password (10+ characters)</span><input autoFocus required minLength={10} maxLength={128} type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)}/></label><label className="field"><span>Confirm new password</span><input required minLength={10} maxLength={128} type="password" autoComplete="new-password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}/></label><button className="primary" disabled={!!busy}>Reset password</button></form>{(authSubmitted || notice.error) && <p className={`notice ${notice.error ? 'error' : 'success'}`} role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}<p><button type="button" className="link" onClick={() => {setResetToken(''); window.history.replaceState({}, '', window.location.pathname);}}>Return to sign in</button></p></div></main>;
+  if (auth.required && !auth.authenticated) return <main><div className="empty"><h1>Report Ready</h1><p>{forgotPassword ? 'Enter your account email and we’ll send recovery instructions if an account is eligible.' : creating ? 'Create an account to format your reports.' : 'Sign in to format your reports.'}</p>{forgotPassword ? <form onSubmit={requestPasswordReset} className="login"><label className="field"><span>Email</span><input autoFocus required type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)}/></label><button className="primary" disabled={!!busy}>Send recovery email</button></form> : <form onSubmit={signIn} className="login"><label className="field"><span>Email</span><input autoFocus required type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)}/></label><label className="field"><span>Password{creating ? ' (10+ characters)' : ''}</span><input required type="password" minLength={creating ? 10 : undefined} autoComplete={creating ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)}/></label><button className="primary" disabled={!!busy}>{creating ? 'Create account' : 'Sign in'}</button></form>}{!forgotPassword && auth.googleEnabled && <p><a href="/api/auth/google/login">Continue with Google</a></p>}{auth.passwordResetEnabled && !creating && <p><button type="button" className="link" onClick={() => {setForgotPassword(true); setPassword(''); setAuthSubmitted(false);}}>Forgot password?</button></p>}<p><button type="button" className="link" onClick={() => {setCreating(value => !value); setForgotPassword(false); setPassword(''); setAuthSubmitted(false);}}>{creating ? 'I already have an account' : 'Create an account'}</button></p>{(authSubmitted || notice.error) && <p className={`notice ${notice.error ? 'error' : 'success'}`} role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}</div></main>;
   return <main>
     <header><div className="brand"><span className="mark" aria-hidden="true">¶</span><div><h1>Report Ready</h1><p>Clean, consistent reports in a few steps.</p></div></div><span className="local">Files delete after {auth.retentionHours >= 48 ? Math.round(auth.retentionHours / 24) + ' days' : auth.retentionHours + ' hours'}{auth.required && auth.user && <> · {auth.user.email} · <button type="button" className="link" onClick={signOut}>Sign out</button></>}</span></header>
     {auth.required && <PlansTeam workspace={workspace} onWorkspace={id => {setWorkspace(id); change(structuredClone(fallback));}} profile={profile} onTemplatesChanged={() => setTemplatesVersion(v => v + 1)} refreshKey={busy} disabled={!!busy}/> }

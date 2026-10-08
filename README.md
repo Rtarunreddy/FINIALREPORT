@@ -23,7 +23,8 @@ Report Ready 3 has accounts, a database and pluggable file storage. Copy the val
 1. Set `REPORT_READY_SESSION_SECRET` (48+ random characters) and `REPORT_READY_COOKIE_SECURE=true`.
 2. Point `DATABASE_URL` at Postgres. Tables are created and upgraded automatically on startup; run `cd backend && alembic upgrade head` yourself if you set `REPORT_READY_AUTO_MIGRATE=0`.
 3. Choose file storage: `REPORT_READY_STORAGE=local` (a folder, single instance only) or `s3` with a bucket (AWS S3, Cloudflare R2 or MinIO).
-4. Optional Google sign-in: create an OAuth client with redirect URI `<REPORT_READY_PUBLIC_URL>/api/auth/google/callback`, then set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `REPORT_READY_PUBLIC_URL`.
+4. Optional Google sign-in: create an OAuth client with redirect URI `<REPORT_READY_PUBLIC_URL>/api/auth/google/callback`, then set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `REPORT_READY_PUBLIC_URL`. Google sign-in appears once both credentials are configured; the OAuth consent screen controls which Google accounts may use it.
+5. Password recovery: create a Resend account, verify a sender domain, then set `RESEND_API_KEY` and `REPORT_READY_EMAIL_FROM` (for example, `Report Ready <no-reply@your-domain.com>`). Recovery links expire after 30 minutes and are single-use. Keep the API key in the hosting provider's secrets, not in source control.
 
 `render.yaml` provisions Postgres and the web service; add the bucket and credentials in the Render dashboard.
 
