@@ -9,13 +9,24 @@ from sqlalchemy.orm import Session
 
 from ..db_models import Template, User
 from ..deps import current_user, get_db, get_storage
-from ..formatting import DEFAULT_PROFILE, IEEE_PROFILE, TECHNICAL_PROFILE, style_profile
+from ..formatting import (APA_PROFILE, BUSINESS_PROFILE, CHICAGO_PROFILE, DEFAULT_PROFILE,
+                          HARVARD_PROFILE, IEEE_PROFILE, MLA_PROFILE, TECHNICAL_PROFILE,
+                          style_profile)
 from ..models import Profile
 from ..services import get_owned_doc, record_usage, valid_id
 
 router = APIRouter(prefix="/api")
-BUILTINS = [{"id": "generic", **DEFAULT_PROFILE}, {"id": "technical", **TECHNICAL_PROFILE}, {"id": "ieee", **IEEE_PROFILE}]
-BUILTIN_IDS = {"generic", "technical", "ieee"}
+BUILTINS = [
+    {"id": "generic", **DEFAULT_PROFILE},
+    {"id": "technical", **TECHNICAL_PROFILE},
+    {"id": "apa7", **APA_PROFILE},
+    {"id": "mla9", **MLA_PROFILE},
+    {"id": "chicago", **CHICAGO_PROFILE},
+    {"id": "harvard", **HARVARD_PROFILE},
+    {"id": "ieee", **IEEE_PROFILE},
+    {"id": "business", **BUSINESS_PROFILE},
+]
+BUILTIN_IDS = {item["id"] for item in BUILTINS}
 
 
 def save_template(db: Session, user: User, profile: Profile) -> dict:

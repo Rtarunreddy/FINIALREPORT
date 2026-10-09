@@ -43,8 +43,8 @@ After changing a model in `backend/app/db_models.py`, create a migration with `c
 ## Format a report
 
 1. Choose your DOCX or drop it onto the upload area.
-2. Select a template. The generic template uses Times New Roman, 12 pt, justified body text and 1.5 line spacing.
-3. Optionally open **Adjust format** to set fonts, heading sizes, margins, paper size and columns.
+2. Select a template. Built-in starting layouts include generic university, formal technical, APA 7 student paper, MLA 9, Chicago/Turabian, Harvard author-date, IEEE two-column, and business report.
+3. Optionally open **Adjust format** to set fonts, heading sizes, first-line indent, margins, paper size, columns and a single- or double-line page border.
 4. Open **Cleanup and finishing touches** to choose which kinds of cleanup to apply.
 5. Click **Format my report**, then **Download DOCX**.
 6. Open the copy in Word and check its page breaks, tables and complex objects before submission.
@@ -72,6 +72,8 @@ Review the learned settings, then format your report. Reference learning transfe
 | Page setup | Set margins; preserve dimensions and columns unless explicitly changed; preserve section orientation |
 
 Cleanup options can be switched off when the source uses an intentional special layout. Blank header/footer inputs retain existing wording. Entered text is **added**, not used to erase existing header/footer content. Reformatting an app-generated copy updates the app's own added paragraph rather than appending it again.
+
+The academic templates are layout starting points, not full style-guide compliance: requirements differ between institutions and assignments. They do not generate title pages, running heads with author names, citation formatting, reference lists, or style-specific content. Confirm the assignment's latest rules and review the finished copy before submission.
 
 ## PDF options
 

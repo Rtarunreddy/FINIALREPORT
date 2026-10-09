@@ -20,11 +20,47 @@ from .models import Profile
 DEFAULT_PROFILE = Profile(name="Generic university report").model_dump(exclude={"id"})
 TECHNICAL_PROFILE = deepcopy(DEFAULT_PROFILE)
 TECHNICAL_PROFILE["name"] = "Formal technical report"
-TECHNICAL_PROFILE["page"]["columns"] = 1
+TECHNICAL_PROFILE["page"].update(size="A4", top=1, bottom=1, left=1, right=1, columns=1)
+TECHNICAL_PROFILE["body"].update(font="Arial", size=11, alignment="left", lineSpacing=1.15, after=6)
+TECHNICAL_PROFILE["extras"]["startChaptersOnNewPage"] = True
 IEEE_PROFILE = deepcopy(DEFAULT_PROFILE)
-IEEE_PROFILE["name"] = "Two-column paper starter"
-IEEE_PROFILE["page"].update(top=.75, bottom=.75, left=.75, right=.75, columns=2)
-IEEE_PROFILE["body"].update(size=10, lineSpacing=1, after=0)
+IEEE_PROFILE["name"] = "IEEE (two-column paper layout)"
+IEEE_PROFILE["page"].update(size="Letter", top=.75, bottom=.75, left=.75, right=.75, columns=2)
+IEEE_PROFILE["body"].update(size=10, alignment="left", lineSpacing=1, after=0)
+
+
+def academic_profile(name, *, paper_size="Letter", font="Times New Roman", line_spacing=2,
+                     alignment="left", page_numbers=False, heading_alignment="left"):
+    profile = deepcopy(DEFAULT_PROFILE)
+    profile["name"] = name
+    profile["page"].update(size=paper_size, top=1, bottom=1, left=1, right=1, columns=1)
+    profile["body"].update(font=font, size=12, alignment=alignment, lineSpacing=line_spacing,
+                           before=0, after=0, firstLineIndent=.5)
+    for level, heading in enumerate(profile["headings"].values(), start=1):
+        heading.update(font=font, size=12 if level > 1 else 14,
+                       alignment=heading_alignment, lineSpacing=line_spacing,
+                       before=12, after=0, firstLineIndent=0)
+    profile["extras"].update(pageNumbers=page_numbers, pageNumberPosition="header")
+    return profile
+
+
+APA_PROFILE = academic_profile("APA 7 (student-paper layout)", font="Times New Roman",
+                               line_spacing=2, heading_alignment="left", page_numbers=True)
+APA_PROFILE["headings"]["h1"]["alignment"] = "center"
+MLA_PROFILE = academic_profile("MLA 9 (paper layout)", font="Times New Roman",
+                               line_spacing=2, heading_alignment="left", page_numbers=True)
+MLA_PROFILE["headings"]["h1"]["alignment"] = "center"
+CHICAGO_PROFILE = academic_profile("Chicago / Turabian (student-paper layout)",
+                                   font="Times New Roman", line_spacing=2,
+                                   heading_alignment="left", page_numbers=True)
+HARVARD_PROFILE = academic_profile("Harvard author-date (institution-dependent)",
+                                   paper_size="A4", font="Arial", line_spacing=1.5,
+                                   alignment="justify")
+BUSINESS_PROFILE = deepcopy(DEFAULT_PROFILE)
+BUSINESS_PROFILE["name"] = "Business report"
+BUSINESS_PROFILE["page"].update(size="Letter", top=1, bottom=1, left=1, right=1, columns=1)
+BUSINESS_PROFILE["body"].update(font="Arial", size=11, alignment="left", lineSpacing=1.15,
+                                before=0, after=6, firstLineIndent=0)
 ALIGN = {"left": WD_ALIGN_PARAGRAPH.LEFT, "center": WD_ALIGN_PARAGRAPH.CENTER,
          "right": WD_ALIGN_PARAGRAPH.RIGHT, "justify": WD_ALIGN_PARAGRAPH.JUSTIFY}
 
@@ -131,6 +167,7 @@ def format_text(p, settings, reset_indent=True, bold=None):
         if ind is not None:
             for key in ("leftChars", "rightChars", "firstLineChars", "hangingChars", "start", "end"):
                 ind.attrib.pop(qn("w:" + key), None)
+        fmt.first_line_indent = Inches(settings.get("firstLineIndent", 0))
     for r in runs(p):
         # Drawing-only runs and native equation children are not restyled.
         if not r.text: continue
@@ -237,16 +274,44 @@ def format_headers(doc, profile, changed):
                 # Updating our own field should not be mistaken for a user PAGE field.
                 existing_page = any(has_page_number(ParagraphContainer(p)) for p in element.findall(qn("w:p")) if p not in owned)
                 if text or want_page:
-                    managed_paragraph(container, marker_name, text, want_page and not existing_page)
+                    managed = managed_paragraph(container, marker_name, text, want_page and not existing_page)
+                    if want_page and kind == "header":
+                        managed.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     if want_page and not existing_page: changed["pageNumbers"] += 1
                 if extras["normalizeHeadersFooters"]:
                     for p in container.paragraphs:
-                        format_text(p, {**settings, "alignment": "left" if kind == "header" else "center"})
+                        format_text(p, {**settings, "alignment": "right" if kind == "header" and want_page else "left" if kind == "header" else "center"})
                 if text or want_page or extras["normalizeHeadersFooters"]: changed[kind + "s"] += 1
 
 
 class ParagraphContainer:
     def __init__(self, element): self._element = element
+
+
+def apply_page_border(section, style):
+    sect_pr = section._sectPr
+    old = sect_pr.find(qn("w:pgBorders"))
+    if old is not None:
+        sect_pr.remove(old)
+    if style == "none":
+        return
+    borders = OxmlElement("w:pgBorders")
+    borders.set(qn("w:offsetFrom"), "page")
+    border_style = "double" if style == "double" else "single"
+    for side in ("top", "left", "bottom", "right"):
+        edge = OxmlElement("w:" + side)
+        edge.set(qn("w:val"), border_style)
+        edge.set(qn("w:sz"), "8")
+        edge.set(qn("w:space"), "18")
+        edge.set(qn("w:color"), "000000")
+        borders.append(edge)
+    later_elements = ("w:lnNumType", "w:pgNumType", "w:cols", "w:formProt", "w:vAlign",
+                      "w:noEndnote", "w:titlePg", "w:textDirection", "w:bidi", "w:rtlGutter", "w:docGrid")
+    next_element = next((sect_pr.find(qn(tag)) for tag in later_elements if sect_pr.find(qn(tag)) is not None), None)
+    if next_element is None:
+        sect_pr.append(borders)
+    else:
+        next_element.addprevious(borders)
 
 
 def apply_profile(source: Path, dest: Path, profile: dict):
@@ -256,6 +321,7 @@ def apply_profile(source: Path, dest: Path, profile: dict):
     changed = {k: 0 for k in ("body", "lists", "headings", "titles", "subtitles", "captions", "tableText", "tables", "sections", "headers", "footers", "pageNumbers", "images", "imageParagraphs")}
     page = profile["page"]; extras = profile["extras"]; body = profile["body"]
     for section in doc.sections:
+        apply_page_border(section, page["border"])
         if page["size"] != "Existing report":
             w, h = (8.5, 11) if page["size"] == "Letter" else (8.2677, 11.6929)
             if section.page_width > section.page_height: w, h = h, w
@@ -293,7 +359,7 @@ def apply_profile(source: Path, dest: Path, profile: dict):
             if not extras["normalizeCaptions"]: continue
             settings.update(size=max(9, body["size"] - 2), alignment="center", lineSpacing=1, before=4, after=8); reset = True
         elif kind == "lists": reset = False; settings["alignment"] = "left"
-        elif kind == "tableText": settings.update(size=min(11, body["size"]), alignment="left", lineSpacing=1.1, before=0, after=4); reset = True
+        elif kind == "tableText": settings.update(size=min(11, body["size"]), alignment="left", lineSpacing=1.1, before=0, after=4, firstLineIndent=0); reset = True
         if in_table: settings = {**settings, "preserveColor": True}
         format_text(p, settings, reset, bold); changed[kind] += 1
     for shape in doc.inline_shapes:

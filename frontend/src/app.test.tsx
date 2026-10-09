@@ -4,7 +4,7 @@ import {cleanup, fireEvent, render, screen, waitFor} from '@testing-library/reac
 import {App} from './main';
 
 const style = {font: 'Calibri', size: 11, alignment: 'left', lineSpacing: 1.15, before: 0, after: 6};
-const profile = {id: 'generic', name: 'Generic university report', page: {size: 'Existing report', top: 1, bottom: 1, left: 1, right: 1, columns: 0}, body: style, headings: {h1: {...style, size: 16}, h2: {...style, size: 14}, h3: style}, extras: {headerText: '', footerText: '', pageNumbers: false, pageNumberPosition: 'footer', imageMaxWidth: 0, startChaptersOnNewPage: false, normalizeTables: true, normalizeCaptions: true, normalizeHeadersFooters: true, centerImages: true, fitImages: true, resetBodyIndents: true}};
+const profile = {id: 'generic', name: 'Generic university report', page: {size: 'Existing report', top: 1, bottom: 1, left: 1, right: 1, columns: 0, border: 'none'}, body: {...style, firstLineIndent: 0}, headings: {h1: {...style, firstLineIndent: 0, size: 16}, h2: {...style, firstLineIndent: 0, size: 14}, h3: {...style, firstLineIndent: 0}}, extras: {headerText: '', footerText: '', pageNumbers: false, pageNumberPosition: 'footer', imageMaxWidth: 0, startChaptersOnNewPage: false, normalizeTables: true, normalizeCaptions: true, normalizeHeadersFooters: true, centerImages: true, fitImages: true, resetBodyIndents: true}};
 const reportFile = () => new File(['test'], 'my-report.docx', {type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
 let quotaError = false;
 let failUpload = false;
@@ -70,6 +70,14 @@ describe('report workflow', () => {
     fireEvent.change(screen.getByLabelText('Body font'), {target: {value: 'Arial'}});
     expect(screen.queryByRole('button', {name: 'Download DOCX'})).toBeNull();
     expect(screen.getByRole('button', {name: 'Format my report'})).toBeTruthy();
+  });
+  it('offers page borders and sends the selected border with the format request', async () => {
+    render(<App/>); await chooseReport();
+    fireEvent.change(screen.getByLabelText('Page border'), {target: {value: 'double'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Format my report'}));
+    await screen.findByRole('button', {name: 'Download DOCX'});
+    const applyCall = fetchMock.mock.calls.find(([url]) => url === '/api/uploads/upload-1/apply');
+    expect(JSON.parse(String(applyCall?.[1]?.body)).profile.page.border).toBe('double');
   });
   it('learns a reference without replacing the active report', async () => {
     render(<App/>); await chooseReport();

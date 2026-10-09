@@ -7,7 +7,7 @@ const API = '/api';
 type Alignment = 'left' | 'center' | 'right' | 'justify';
 type TextStyle = {font: string; size: number; alignment: Alignment; lineSpacing: number; before: number; after: number; bold?: boolean};
 type Extras = {headerText: string; footerText: string; pageNumbers: boolean; pageNumberPosition: 'header' | 'footer'; imageMaxWidth: number; startChaptersOnNewPage: boolean; normalizeTables: boolean; normalizeCaptions: boolean; normalizeHeadersFooters: boolean; centerImages: boolean; fitImages: boolean; resetBodyIndents: boolean};
-type Profile = {id?: string | null; name: string; page: {size: string; top: number; bottom: number; left: number; right: number; columns: number}; body: TextStyle; headings: Record<'h1' | 'h2' | 'h3', TextStyle>; extras: Extras};
+type Profile = {id?: string | null; name: string; page: {size: string; top: number; bottom: number; left: number; right: number; columns: number; border: 'none' | 'box' | 'double'}; body: TextStyle & {firstLineIndent: number}; headings: Record<'h1' | 'h2' | 'h3', TextStyle & {firstLineIndent: number}>; extras: Extras};
 type Uploaded = {id: string; name: string; convertedFrom?: string; metrics: Record<string, number>};
 type Finding = {title: string; why: string; action: string};
 type Audit = {passed: string[]; issues: Finding[]; review: Finding[]; warning: string};
@@ -17,8 +17,8 @@ type Result = {id: string; report: {changed: Record<string, number>; formatting_
 type Job = {id: string; kind: 'format' | 'pdf'; status: 'queued' | 'running' | 'done' | 'failed'; error: string | null; outputId: string | null; report: (Result['report'] & {note?: string; pages?: number}) | null};
 type Health = {pdfConversion: boolean; pdfExport: boolean; retentionHours: number};
 type Auth = {required: boolean; authenticated: boolean; retentionHours: number; user?: {email: string; plan: string} | null; googleEnabled?: boolean; passwordResetEnabled?: boolean};
-const base: TextStyle = {font: 'Times New Roman', size: 12, alignment: 'justify', lineSpacing: 1.5, before: 0, after: 6};
-const fallback: Profile = {id: 'generic', name: 'Generic university report', page: {size: 'Existing report', top: 1, bottom: 1, left: 1.25, right: 1, columns: 0}, body: base,
+const base: TextStyle & {firstLineIndent: number} = {font: 'Times New Roman', size: 12, alignment: 'justify', lineSpacing: 1.5, before: 0, after: 6, firstLineIndent: 0};
+const fallback: Profile = {id: 'generic', name: 'Generic university report', page: {size: 'Existing report', top: 1, bottom: 1, left: 1.25, right: 1, columns: 0, border: 'none'}, body: base,
   headings: {h1: {...base, size: 16, alignment: 'left', lineSpacing: 1.15, before: 18, after: 10, bold: true}, h2: {...base, size: 14, alignment: 'left', lineSpacing: 1.15, before: 14, after: 8, bold: true}, h3: {...base, alignment: 'left', lineSpacing: 1.15, before: 10, bold: true}},
   extras: {headerText: '', footerText: '', pageNumbers: false, pageNumberPosition: 'footer', imageMaxWidth: 0, startChaptersOnNewPage: false, normalizeTables: true, normalizeCaptions: true, normalizeHeadersFooters: true, centerImages: true, fitImages: true, resetBodyIndents: true}};
 
@@ -248,6 +248,7 @@ export function App() {
             <option value="">Custom settings</option>{profiles.map(p => <option key={p.id} value={p.id || ''}>{p.name}</option>)}
           </select></label>
           <p className="hint">{profile.body.font} · {profile.body.size} pt · {profile.body.lineSpacing} line spacing</p>
+          <p className="help">Presets apply common page and text layouts. Title pages, citations and institution-specific rules may still need editing.</p>
           <label className="reference-upload quiet"><span>Use a reference DOCX</span><input aria-label="Use a reference DOCX" type="file" accept=".docx" onChange={e => {learn(e.target.files?.[0]); e.target.value = '';}}/></label>
           <p className="help">Learn a senior report’s body, headings and margins without replacing your report.</p>
         </section>
@@ -256,7 +257,9 @@ export function App() {
           <div className="field-grid"><NumberField label="Size (pt)" min={8} max={48} value={profile.body.size} onChange={v => change({...profile, id: null, body: {...profile.body, size: v}})}/><NumberField label="Line spacing" min={1} max={3} step={.05} value={profile.body.lineSpacing} onChange={v => change({...profile, id: null, body: {...profile.body, lineSpacing: v}})}/></div>
           <label className="field"><span>Body alignment</span><select value={profile.body.alignment} onChange={e => change({...profile, id: null, body: {...profile.body, alignment: e.target.value as Alignment}})}>{['left', 'justify', 'center', 'right'].map(x => <option key={x}>{x}</option>)}</select></label>
           <div className="field-grid">{(['before', 'after'] as const).map(key => <NumberField key={key} label={`Space ${key} (pt)`} value={profile.body[key]} onChange={v => change({...profile, id: null, body: {...profile.body, [key]: v}})}/>)}</div>
+          <NumberField label="First-line indent (in)" min={0} max={2} step={.05} value={profile.body.firstLineIndent} onChange={v => change({...profile, id: null, body: {...profile.body, firstLineIndent: v}})}/>
           <label className="field"><span>Paper size</span><select value={profile.page.size} onChange={e => change({...profile, id: null, page: {...profile.page, size: e.target.value}})}>{['Existing report', 'A4', 'Letter'].map(x => <option key={x}>{x}</option>)}</select></label>
+          <label className="field"><span>Page border</span><select value={profile.page.border} onChange={e => change({...profile, id: null, page: {...profile.page, border: e.target.value as Profile['page']['border']}})}><option value="none">None</option><option value="box">Single-line box</option><option value="double">Double-line box</option></select></label>
           <label className="field"><span>Columns</span><select value={profile.page.columns} onChange={e => change({...profile, id: null, page: {...profile.page, columns: Number(e.target.value)}})}><option value={0}>Keep existing</option><option value={1}>One</option><option value={2}>Two</option></select></label>
           <div className="field-grid">{(['top', 'bottom', 'left', 'right'] as const).map(key => <NumberField key={key} label={`${key} margin (in)`} min={.2} max={3} step={.05} value={profile.page[key]} onChange={v => change({...profile, id: null, page: {...profile.page, [key]: v}})}/>)}</div>
           {(['h1', 'h2', 'h3'] as const).map((key, i) => <details key={key} className="heading-settings"><summary>Heading {i + 1}</summary>

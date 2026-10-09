@@ -14,6 +14,7 @@ class Page(Settings):
     left: float = Field(default=1.25, ge=0.2, le=3)
     right: float = Field(default=1, ge=0.2, le=3)
     columns: int = Field(default=0, ge=0, le=2)
+    border: Literal["none", "box", "double"] = "none"
 
 
 class Text(Settings):
@@ -23,6 +24,7 @@ class Text(Settings):
     lineSpacing: float = Field(default=1.5, ge=1, le=3)
     before: float = Field(default=0, ge=0, le=72)
     after: float = Field(default=6, ge=0, le=72)
+    firstLineIndent: float = Field(default=0, ge=0, le=2)
 
 
 class Heading(Text):
