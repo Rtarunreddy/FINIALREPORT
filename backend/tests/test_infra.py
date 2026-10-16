@@ -105,16 +105,16 @@ def test_expired_documents_are_removed_and_unreachable(cloud):
     with cloud.app.state.session_factory() as db: assert db.get(Doc, doc).deleted_at is not None
 
 
-def test_paid_plans_keep_history_longer(cloud):
+def test_legacy_paid_subscription_does_not_extend_free_retention(cloud):
     c = sign_up(cloud.app)
     with cloud.app.state.session_factory() as db:
         user = db.query(User).one()
         from app.db_models import Subscription
         db.add(Subscription(owner_type="user", owner_id=user.id, stripe_sub_id="sub_paid", plan="pro", status="active", current_period_end=utcnow()+timedelta(days=30))); db.commit()
-    assert c.get("/api/auth/status").json()["retentionHours"] == 24 * 90
+    assert c.get("/api/auth/status").json()["retentionHours"] == 24
     doc = c.post("/api/uploads", files={"file": ("r.docx", docx_bytes())}).json()["id"]
     with cloud.app.state.session_factory() as db:
-        row = db.get(Doc, doc); assert row.expires_at - row.created_at == timedelta(hours=24 * 90)
+        row = db.get(Doc, doc); assert row.expires_at - row.created_at == timedelta(hours=24)
 
 
 def test_storage_keys_never_contain_user_filenames(cloud):

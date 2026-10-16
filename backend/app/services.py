@@ -10,14 +10,11 @@ from pathlib import Path
 
 from fastapi import HTTPException
 from sqlalchemy import select
-from sqlalchemy.orm import Session, object_session
+from sqlalchemy.orm import Session
 
 from .db_models import Document, UsageEvent, User, utcnow
 
 LOG = logging.getLogger(__name__)
-PAID_PLANS = {"pro", "team", "institutional"}
-
-
 def valid_id(ident) -> str:
     try:
         if str(uuid.UUID(ident)) != ident: raise ValueError()
@@ -26,16 +23,7 @@ def valid_id(ident) -> str:
 
 
 def retention_hours(settings, user: User) -> int:
-    from .plans import effective_plan
-    from .db_models import Team, TeamMember
-    db = object_session(user)
-    paid = False
-    if db is not None:
-        paid = effective_plan(db, user).id != "free"
-        if not paid:
-            owners = db.scalars(select(User).join(Team, Team.owner_id == User.id).join(TeamMember, TeamMember.team_id == Team.id).where(TeamMember.user_id == user.id))
-            paid = any(effective_plan(db, owner).id == "team" for owner in owners)
-    return settings.paid_retention_hours if paid else settings.free_retention_hours
+    return settings.free_retention_hours
 
 
 def sha256_of(path: Path) -> str:

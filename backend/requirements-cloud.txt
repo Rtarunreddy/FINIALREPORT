@@ -1,2 +1,3 @@
 psycopg[binary]==3.3.6
 boto3==1.43.108
+sentry-sdk[fastapi]>=2.0,<3.0

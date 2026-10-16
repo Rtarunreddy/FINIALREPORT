@@ -36,6 +36,10 @@ services:
         sync: false
       - key: REPORT_READY_EMAIL_FROM       # verified Resend sender, e.g. Report Ready <no-reply@example.com>
         sync: false
+      - key: SENTRY_DSN                   # optional Sentry error monitoring; review privacy settings before enabling
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
       - key: REPORT_READY_WORKERS          # in-process job workers; set 0 if you run `python -m app.worker` as a separate service
         value: "2"
       - key: REPORT_READY_SESSION_SECRET

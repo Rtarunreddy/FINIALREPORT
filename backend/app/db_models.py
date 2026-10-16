@@ -116,7 +116,7 @@ class UsageEvent(Base):
 
 
 class Subscription(Base):
-    """Filled by the Stripe webhook in the billing phase."""
+    """Legacy schema retained for existing databases; the app no longer reads subscriptions."""
     __tablename__ = "subscriptions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     owner_type: Mapped[str] = mapped_column(String(8))  # user | team

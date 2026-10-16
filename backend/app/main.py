@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import Settings
 from .db import make_engine, make_session_factory, run_migrations
-from .routers import auth, documents, jobs, misc, templates, billing, teams
+from .routers import auth, documents, jobs, misc, templates, plans, teams
 from .security import LoginThrottle
 from .worker import JobRunner
 from .services import Cleaner
@@ -23,6 +23,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def create_app(settings: Settings | None = None, storage=None) -> FastAPI:
     settings = settings or Settings.from_env()
+    if settings.sentry_dsn:
+        try:
+            import sentry_sdk
+        except ImportError as exc:
+            raise RuntimeError("SENTRY_DSN is set but sentry-sdk is not installed.") from exc
+        sentry_sdk.init(dsn=settings.sentry_dsn, environment=settings.sentry_environment, send_default_pii=False, traces_sample_rate=0)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -48,7 +54,7 @@ def create_app(settings: Settings | None = None, storage=None) -> FastAPI:
             except Exception: LOG.exception("Expired-document cleanup failed")
         return await call_next(request)
 
-    for module in (auth, misc, documents, templates, jobs, billing, teams): app.include_router(module.router)
+    for module in (auth, misc, documents, templates, jobs, plans, teams): app.include_router(module.router)
     dist = ROOT.parent / "frontend" / "dist"
     if dist.is_dir(): app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
     return app

@@ -1,43 +1,39 @@
 # Report Ready — Phase 1–4 review
 
-Review date: 8 October 2026. This is a code review and local test report, not a production-readiness certification. Phase 3 is implemented in this package; live billing has not been enabled.
+Review date: 14 October 2026. This is a code review and local test report, not a production-readiness certification. Paid checkout and subscription support have been removed; the hosted deployment still requires operational verification.
 
 | Roadmap item | Code status | Evidence / remaining work |
 | --- | --- | --- |
 | 1. SQLAlchemy/Alembic; replace file locks | Present | Database models and three migrations; templates/feedback use transactions. New quota operations use database locks. |
 | 2. Email login and Google OAuth | Present | Password login, signed cookies, Google callback and ownership dependencies. Production OAuth configuration remains external. Email verification, password reset, session revocation and distributed rate limits remain launch-hardening work. |
 | 3. Object storage and ownership | Present | Local/S3 put/read/delete abstraction; ownership checked for uploads, outputs and jobs. Existing S3 tests use a fake service. |
-| 4. Plan retention/history | Present in backend | Per-file `expires_at`; 24h Free and 90-day paid default; cleanup. Phase 3 checks current subscription entitlement. No complete history browser in UI yet; `/api/jobs` exposes job history. |
-| 5. Router split and cross-user tests | Present | Auth, documents, templates, jobs; new billing/teams routers. Protected route and ownership tests. |
+| 4. Plan retention/history | Present in backend | Per-file `expires_at`; 24h Free retention and cleanup. `/api/jobs` exposes job history, but no complete history browser in UI. |
+| 5. Router split and cross-user tests | Present | Auth, documents, templates, jobs, plans, and teams routers. Protected route and ownership tests. |
 | 6. One-click default flow | Present | Auto-format on upload; advanced format and cleanup controls collapsed. |
 | 7. Worker queue and polling | Present | Database-backed worker claim, status polling, standalone worker mode. Batch upload UI is still future work. |
 | 8. Server PDF export | Present | LibreOffice headless backend and Docker installation. Hosted requirements exclude pywin32; desktop fallback is a separate requirements file. Rendering fidelity still needs target-host verification. |
 | 9. Before/after summary | Present | Summary generation and frontend comparison rows; not a full page-render comparison. |
-| 10. Stripe billing | Added in Phase 3 | Checkout, portal, verified/idempotent webhook receipts, subscription synchronization, fixed server-side price map. Sandbox account tests still needed. |
-| 11. Job quotas and upgrade prompt | Added in Phase 3 | Atomic usage reservations; failed-job release; structured 402 with UI upgrade link; pooled team quota. Calendar-month policy documented. |
-| 12. Teams, invites, shared templates | Added in Phase 3 | Five seats including owner; expiry/revocation/single-use invites; owner template publishing; workspace selector. Invitation codes are manually shared, not emailed. |
-| 13. Privacy/terms, encryption, data deletion | Not implemented | Write operator-specific policies; implement account erasure including files, jobs, memberships and subscription lifecycle. Configure and verify encrypted database, object storage and backups. Ordinary upload deletion is not account erasure. |
-| 14. Monitoring, analytics, CI | Not complete | Existing logging, usage records and automated tests are present. No production error-monitoring integration, analytics dashboard or CI workflow supplied. The older “26 tests” estimate is outdated; see current results. |
-| 15. 20–50-user pilot | Not run | Recruit users, collect formatting failures and retention/activation metrics, check support workload and willingness to pay before enabling live billing. |
+| 10. Payments | Removed | No checkout, customer portal, Stripe webhook, paid plans, or Stripe credentials are used. Existing legacy subscription rows do not grant paid entitlements. |
+| 11. Job quotas | Present | Atomic five-job Free allowance per UTC calendar month; failed-job release; structured 402 with usage link. Team-workspace jobs share the owner's allowance. |
+| 12. Teams, invites, shared templates | Present on Free | Five seats including owner; expiry/revocation/single-use invites; owner template publishing; workspace selector. Invitation codes are manually shared, not emailed. |
+| 13. Privacy/terms, encryption, data deletion | Partially implemented | Operator-specific Privacy Notice and Terms are published at `/privacy.html` and `/terms.html`; users can delete their account, live files, jobs, templates and owned team. The policies still need operator/legal review. Verify provider encryption, backup lifecycle and restoration; provider backups/logs are not immediately erased by account deletion. |
+| 14. Monitoring, analytics, CI | Partially implemented | GitHub Actions is configured to run backend, PostgreSQL contention and disposable-database dump/restore, LibreOffice integration, frontend, and container-build checks. `/api/health` checks database readiness. Optional Sentry reporting is wired but must be configured and an alert tested in production. No analytics dashboard is supplied. |
+| 15. User pilot | Not run | Recruit users, collect formatting failures and retention/activation metrics, and check support workload before public launch. |
 
 ## Priority before launch
 
-1. Run actual Stripe sandbox checkout/portal/webhook tests, including renewal and cancellation, with your account's approved prices.
-2. Verify Postgres under concurrent quota/invitation traffic and run the migration against a restored Phase 2 production snapshot. SQLite migration and concurrent quota tests pass locally; Postgres integration was not exercised here.
-3. Complete privacy/terms/account erasure, configure encryption and backup recovery, and prevent paid-account deletion from leaving an active billable Stripe subscription.
-4. Add CI for backend/frontend checks, production monitoring, and abuse controls for uploads, reference-learning, conversion and registration. Sandbox LibreOffice and restrict outbound/file access as appropriate to the deployment.
-5. Pilot with 20–50 users using real university reports and reference templates. Check equations, tables, diagrams, headings, preservation and export fidelity; do not assume every document formats correctly.
-6. Confirm pricing and limits. Current 5/100/500 quotas and five Team seats are provisional defaults, not validated business decisions.
+1. Run the new CI workflow and verify its PostgreSQL, disposable dump/restore, and Docker jobs pass. Separately test restoring the actual production database and bucket together; CI does not use production backups.
+2. Have the Privacy Notice and Terms reviewed for the operator's specific legal obligations. Verify provider encryption, backup lifecycle and account-erasure behavior, including retained backups/logs.
+3. Configure Sentry only after reviewing its privacy settings, then trigger and confirm a test alert. Verify OAuth/recovery email if enabled and confirm host network/file access is appropriately restricted.
+4. Validate representative real reports on the deployed Render service. Check equations, tables, diagrams, headings, preservation and export fidelity; the CI PDF test uses synthetic content.
+5. Run a pilot with real users and verify support workload, retention, and document success rates before declaring the service launch-ready.
 
 ## Pilot acceptance checklist
 
 - [ ] Document success rate and reasons for manual intervention measured.
 - [ ] Cross-user files remain inaccessible; removed team members lose template access.
 - [ ] Failed jobs do not consume quota; simultaneous submissions cannot exceed it.
-- [ ] Signed subscription events update plan state; invalid signatures rejected.
-- [ ] Renewal, payment failure/recovery and cancellation match the chosen policy.
 - [ ] Retention expiry, backups and account erasure verified on the hosting provider.
-- [ ] Support/contact details, privacy/terms and billing/refund policy published.
+- [ ] Support/contact details and privacy/terms published and reviewed for the operator's legal obligations.
 - [ ] Observability and CI pass; database restoration tested.
 - [ ] 20–50 pilot users have tried the workflow; launch decision recorded.
-- [ ] Only then configure live keys/prices and enable new purchases.

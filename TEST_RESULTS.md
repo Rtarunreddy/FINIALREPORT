@@ -1,22 +1,25 @@
-# Validation — Phase 3 / version 3.2
+# Validation — Report Ready 3.3
 
-Checked in Linux with Python 3.12 and Node 24.19.0. Report prepared 8 October 2026. These results describe local automated checks, not live Stripe or production deployment.
+Checked locally on Windows with Python 3.11.9 and Node 24.18.0. Report prepared 14 October 2026. These results describe repository checks, not a production certification.
 
 | Check | Result |
 | --- | --- |
-| Backend suite (`python -m pytest -q`) | 102 passed |
-| Frontend component suite (`npm test`) | 13 passed across 2 files |
+| Backend suite (`python -m pytest -q`) | 93 passed, 4 skipped |
+| Frontend component suite (`npm test`) | 18 passed across 2 files |
 | TypeScript and Vite production build | Passed; bundled interface rebuilt |
 | Alembic schema/model alignment and downgrade | Passed within backend suite |
 | Upgrade of populated Phase 2 SQLite data | Passed; job/usage foreign-key links preserved, downgrade also checked |
 | Concurrent Free quota submissions | 8 simultaneous requests: 5 admitted, 3 rejected; failed job restores capacity |
-| Stripe signature verification | Real SDK verification; malformed, wrong-secret and expired signatures rejected |
-| Stripe integration behavior | Mocked API transport; duplicate/stale webhooks, failure/retry, price allowlist, customer mapping, checkout reuse/plan switch and portal routing passed |
-| Team isolation and limits | Single-use/expired/revoked invite cases, seats, member removal, shared templates and shared owner/member quota passed |
+| Billing removal | Legacy checkout, portal, and webhook routes no longer process requests; only Free plan is available |
+| Team access and limits | Free team creation, single-use/expired/revoked invites, five-seat limit, member removal, shared templates, private documents, and pooled Free quota passed |
+| Account deletion | Password/email confirmation, removal of owned files and records, owned-team cleanup, retained member accounts, and signed-out session passed locally |
+| Privacy and terms | Corrected Report Ready pages are included in the frontend build; operator/legal review remains required |
+| CI and readiness monitoring | Workflow added for PostgreSQL contention and disposable dump/restore, LibreOffice integration, frontend checks, and container build; health endpoint checks DB readiness; optional Sentry integration added |
+| Donation UI | Top-right Donate button is visible and disabled pending a destination |
 
-The suite retains the earlier formatting, ownership, authentication, queue, PDF adapter, storage and retention checks. Completion does not double-count reserved quota. Expired subscriptions lose entitlement and active team membership receives paid retention. The new frontend tests cover pilot-disabled payments, actionable billing errors, team invitations, shared-template publishing and the quota upgrade link.
+The suite retains the formatting, ownership, authentication, queue, PDF adapter, storage, and retention checks. Failed jobs release quota and successful completion does not double-count reservations. Existing subscription rows do not grant paid entitlement or longer retention.
 
-Not exercised: actual Stripe sandbox/live requests, real portal configuration, production Postgres concurrency, real S3 deployment, Windows launcher/Word COM, target-host LibreOffice rendering, a live-browser visual review, production deployment or a 20–50-user pilot. Frontend tests use a simulated DOM. PDF engine adapter tests do not certify report pagination.
+Not exercised locally: PostgreSQL (the optional integration test was skipped because no test database was configured), the disposable CI dump/restore, real S3 deployment or bucket recovery, Windows launcher/Word COM, target-host LibreOffice rendering, production backup restoration, configured production Sentry alerts, or a user pilot. The new GitHub Actions workflow has not run because these changes have not been pushed. No live Render deployment was checked in this validation; an earlier check reported version 3.2.0, so verify the deployed version before relying on it. Docker is not installed locally, so the container image was not built here. Frontend tests use a simulated DOM; the local PDF end-to-end test was skipped without LibreOffice and synthetic CI conversion cannot certify real-document pagination.
 
 One upstream Starlette/httpx test-client deprecation warning was reported; tests passed. jsdom reports that document navigation is unimplemented for an existing download test; actual browser downloads were not exercised here.
 

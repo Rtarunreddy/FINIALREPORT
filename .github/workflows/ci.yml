@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: report_ready
+          POSTGRES_PASSWORD: report_ready
+          POSTGRES_DB: report_ready_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U report_ready -d report_ready_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REPORT_READY_TEST_POSTGRES_URL: postgresql+psycopg://report_ready:report_ready@localhost:5432/report_ready_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements-dev.txt -r backend/requirements-cloud.txt
+      - name: Install LibreOffice for PDF integration test
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer fonts-liberation fonts-crosextra-carlito fonts-crosextra-caladea postgresql-client
+      - name: Run backend and PostgreSQL integration tests
+        run: python -m pytest -q
+        working-directory: backend
+      - name: Exercise PostgreSQL backup and restore
+        env:
+          PGPASSWORD: report_ready
+        run: |
+          createdb --host localhost --username report_ready report_ready_restore_test
+          pg_dump --host localhost --username report_ready --dbname report_ready_test --format custom --no-owner --no-acl --file "$RUNNER_TEMP/report-ready.dump"
+          pg_restore --host localhost --username report_ready --dbname report_ready_restore_test --no-owner --no-acl --exit-on-error "$RUNNER_TEMP/report-ready.dump"
+          psql --host localhost --username report_ready --dbname report_ready_restore_test --set ON_ERROR_STOP=1 --command "SELECT version_num FROM alembic_version"
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Run frontend tests
+        run: npm test
+        working-directory: frontend
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+
+  container:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image
+        run: docker build -t report-ready:ci .

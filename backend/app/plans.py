@@ -1,8 +1,8 @@
-"""Provisional product limits; UTC calendar months, not Stripe invoice periods."""
+"""Free usage limits and UTC calendar-month accounting."""
 from dataclasses import asdict, dataclass
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select, update
-from .db_models import Job, Subscription, Team, TeamMember, UsageEvent, User, utcnow
+from .db_models import Job, Team, TeamMember, UsageEvent, User, utcnow
 
 @dataclass(frozen=True)
 class Plan:
@@ -11,25 +11,20 @@ class Plan:
     monthly_jobs: int
     seats: int
 
-PLANS = {p.id: p for p in (Plan("free", "Free", 5, 1), Plan("pro", "Pro", 100, 1), Plan("team", "Team", 500, 5))}
+PLANS = {"free": Plan("free", "Free", 5, 5)}
 
 def effective_plan(db, user):
-    # Re-check the paid period so a missing renewal webhook cannot grant indefinite access.
-    rows = db.scalars(select(Subscription).where(Subscription.owner_type == "user", Subscription.owner_id == user.id,
-        Subscription.status.in_(("active", "trialing")), Subscription.current_period_end > utcnow())).all()
-    return max((PLANS[s.plan] for s in rows if s.plan in PLANS), key=lambda p: p.monthly_jobs, default=PLANS["free"])
+    return PLANS["free"]
 
 def lock_user(db, user_id):
     # A no-op UPDATE obtains a write lock on SQLite and a row lock on PostgreSQL.
     db.execute(update(User).where(User.id == user_id).values(plan_id=User.plan_id))
 
-def team_access(db, user, team_id, owner=False, paid=True):
+def team_access(db, user, team_id, owner=False):
     team = db.get(Team, team_id)
     member = db.get(TeamMember, (team_id, user.id), populate_existing=True)
     if not team or not member: raise HTTPException(404, "Team not found.")
     if owner and team.owner_id != user.id: raise HTTPException(403, "Only the team owner can do this.")
-    if paid and effective_plan(db, db.get(User, team.owner_id)).id != "team":
-        raise HTTPException(403, "The team owner needs an active Team plan. Open Plans & team to upgrade.")
     return team
 
 def quota_scope(db, user, team_id=None, lock=False):
@@ -60,6 +55,6 @@ def reserve_job(db, user, job, team_id=None):
     owner, plan = quota_scope(db, user, team_id, lock=True)
     used = usage_count(db, owner)
     if used >= plan.monthly_jobs:
-        raise HTTPException(402, {"code": "quota_exceeded", "message": f"Monthly job limit reached ({used}/{plan.monthly_jobs}). Open Plans & team to upgrade or wait for next month.", "upgradeUrl": "/#plans", "limit": plan.monthly_jobs, "used": used})
+        raise HTTPException(402, {"code": "quota_exceeded", "message": f"Monthly Free plan job limit reached ({used}/{plan.monthly_jobs}). Try again next month.", "limit": plan.monthly_jobs, "used": used})
     db.add(job); db.flush()
     db.add(UsageEvent(user_id=user.id, team_id=team_id, job_id=job.id, event="export" if job.kind == "pdf" else "format"))

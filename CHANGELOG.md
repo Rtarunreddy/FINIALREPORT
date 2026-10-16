@@ -1,3 +1,14 @@
+# Version 3.3 (free service)
+
+- Removed paid checkout, subscription management, Stripe webhooks, and Stripe runtime dependency. Legacy billing schema is preserved for database compatibility but no longer grants entitlements.
+- Standardized hosted accounts on the five-job Free monthly allowance and 24-hour retention.
+- Enabled free teams with five seats; team-workspace jobs share the owner's Free allowance.
+- Added a disabled Donate button pending a configured donation destination.
+- Added tests for removed billing endpoints, legacy-subscription fallback, free teams, and the Donate state.
+- Added Report Ready privacy and terms pages, plus signed-in account deletion for live files, account records, and owned team workspaces.
+- Added database readiness checks, optional Sentry error reporting, PostgreSQL/LibreOffice CI coverage, and a disposable database backup/restore check.
+- Production provider backup recovery, Sentry alert verification, real-host document rendering, legal review, and the user pilot remain operator tasks.
+
 # Version 3.2 (Phase 3: monetization)
 
 - Added a server-side plan catalogue with provisional Free/Pro/Team limits.

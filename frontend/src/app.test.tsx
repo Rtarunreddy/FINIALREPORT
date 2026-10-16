@@ -14,8 +14,10 @@ let pollCount = 0;
 let jobFails = false;
 let minPolls = 1;
 let pdfEnabled = false;
+let requiresSignIn = false;
+let signedIn = false;
 const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-  if (url.endsWith('/auth/status')) return Response.json({required: false, authenticated: true, retentionHours: 24});
+  if (url.endsWith('/auth/status')) return Response.json({required: requiresSignIn, authenticated: signedIn || !requiresSignIn, retentionHours: 24, user: signedIn ? {email: 'account@example.com', plan: 'free'} : null});
   if (url.endsWith('/health')) return Response.json({pdfConversion: false, pdfExport: pdfEnabled, retentionHours: 24});
   if (url.endsWith('/profiles')) return Response.json([profile]);
   if (url.endsWith('/uploads') && init?.method === 'POST') {
@@ -25,7 +27,7 @@ const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     return Response.json({id: 'upload-' + uploadCount, name: 'my-report.docx', metrics: {words: 100, tables: 2, images: 1}});
   }
   if (url.endsWith('/learn-profile')) return Response.json({profile: {...profile, id: 'learned', name: 'Learned reference'}, message: 'Saved'});
-  if (url.endsWith('/apply') && quotaError) return Response.json({detail: {code: 'quota_exceeded', message: 'Monthly job limit reached. Open Plans & team to upgrade.'}}, {status: 402});
+  if (url.endsWith('/apply') && quotaError) return Response.json({detail: {code: 'quota_exceeded', message: 'Monthly Free plan job limit reached. Try again next month.'}}, {status: 402});
   if (url.endsWith('/apply')) return Response.json({id: 'job-1', kind: 'format', status: 'queued', error: null, outputId: null, report: null}, {status: 202});
   if (url.endsWith('/jobs/job-1')) {
     pollCount++;
@@ -34,11 +36,12 @@ const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     return Response.json({id: 'job-1', kind: 'format', status: 'done', error: null, outputId: 'result-1', report: {changed: {headings: 1, tables: 2, captions: 1, images: 0}, formatting_preview: {body: 'Calibri 11 pt'}, summary: {highlights: ['Different body fonts: 3 → 1'], rows: [{label: 'Body fonts', before: 'Arial, Calibri, Verdana', after: 'Calibri', changed: true}]}, preserved: ['Original upload unchanged'], manual: 'Review in Word.'}});
   }
   if (url.endsWith('/outputs/result-1/pdf')) return Response.json({id: 'job-pdf', kind: 'pdf', status: 'done', error: null, outputId: 'pdf-1', report: {engine: 'libreoffice'}}, {status: 202});
+  if (url.endsWith('/auth/account') && init?.method === 'DELETE') return Response.json({message: 'Your account and associated files were deleted.'});
   if (init?.method === 'DELETE') return Response.json({message: 'Deleted'});
   throw new Error('Unexpected request: ' + url);
 });
 
-beforeEach(() => {window.history.replaceState({}, '', '/'); quotaError = false; localStorage.setItem('report-ready-auto-format', '0'); failUpload = false; networkFailure = false; uploadCount = 0; pollCount = 0; jobFails = false; minPolls = 1; pdfEnabled = false; fetchMock.mockClear(); vi.stubGlobal('fetch', fetchMock);});
+beforeEach(() => {window.history.replaceState({}, '', '/'); quotaError = false; requiresSignIn = false; signedIn = false; localStorage.setItem('report-ready-auto-format', '0'); failUpload = false; networkFailure = false; uploadCount = 0; pollCount = 0; jobFails = false; minPolls = 1; pdfEnabled = false; fetchMock.mockClear(); vi.stubGlobal('fetch', fetchMock);});
 afterEach(() => {cleanup(); window.history.replaceState({}, '', '/'); vi.unstubAllGlobals();});
 
 async function chooseReport() {
@@ -48,6 +51,22 @@ async function chooseReport() {
 }
 
 describe('report workflow', () => {
+  it('shows Donate disabled on the sign-in screen until a link is configured', async () => {
+    requiresSignIn = true;
+    render(<App/>);
+    const donate = await screen.findByRole('button', {name: 'Donate'});
+    expect((donate as HTMLButtonElement).disabled).toBe(true);
+  });
+  it('lets a signed-in user confirm account deletion', async () => {
+    requiresSignIn = true; signedIn = true;
+    render(<App/>);
+    fireEvent.click(await screen.findByText('Account and privacy'));
+    fireEvent.click(screen.getByRole('button', {name: 'Delete account and data'}));
+    fireEvent.change(screen.getByLabelText('Type account@example.com to confirm'), {target: {value: 'account@example.com'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Permanently delete account'}));
+    expect(await screen.findByText('Your account and associated files were deleted.')).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/account', expect.objectContaining({method: 'DELETE'}));
+  });
   it('recovers from a failed upload and enables another attempt', async () => {
     render(<App/>); failUpload = true;
     fireEvent.change(await screen.findByLabelText('Upload your report'), {target: {files: [reportFile()]}});
@@ -188,7 +207,7 @@ describe('sign-in', () => {
 it('shows an upgrade action when monthly quota is exhausted', async () => {
   quotaError = true; render(<App/>); await chooseReport();
   fireEvent.click(screen.getByRole('button', {name: 'Format my report'}));
-  await screen.findByRole('link', {name: 'View plans and upgrade'});
-  expect(screen.getByRole('alert').textContent).toContain('Monthly job limit reached');
+  await screen.findByRole('link', {name: 'View usage limits'});
+  expect(screen.getByRole('alert').textContent).toContain('Monthly Free plan job limit reached');
   expect(screen.getByRole('heading', {name: 'my-report.docx'})).toBeTruthy();
 });

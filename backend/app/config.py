@@ -34,7 +34,6 @@ class Settings:
     cookie_secure: bool = False
     session_seconds: int = 60 * 60 * 24 * 7
     free_retention_hours: int = 24
-    paid_retention_hours: int = 24 * 90
     max_upload: int = 25 * 1024 * 1024
     max_unzipped: int = 150 * 1024 * 1024
     auto_migrate: bool = True
@@ -44,16 +43,13 @@ class Settings:
     max_active_jobs: int = 5               # queued + running jobs one user may have at once
     pdf_timeout_seconds: int = 120
     soffice_path: str = ""                 # LibreOffice executable; auto-detected when empty
-    billing_enabled: bool = False
-    stripe_secret_key: str = ""
-    stripe_webhook_secret: str = ""
-    stripe_pro_price: str = ""
-    stripe_team_price: str = ""
     google_client_id: str = ""
     google_client_secret: str = ""
     resend_api_key: str = ""
     email_from: str = ""
     public_url: str = "http://127.0.0.1:8000"
+    sentry_dsn: str = ""
+    sentry_environment: str = "production"
     cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8000", "http://127.0.0.1:8000"])
 
     def __post_init__(self):
@@ -84,12 +80,9 @@ class Settings:
             local_mode=_flag("REPORT_READY_LOCAL_MODE"), session_secret=env("REPORT_READY_SESSION_SECRET", ""),
             cookie_secure=_flag("REPORT_READY_COOKIE_SECURE"),
             free_retention_hours=int(env("REPORT_READY_RETENTION_HOURS", "24")),
-            paid_retention_hours=int(env("REPORT_READY_PAID_RETENTION_HOURS", str(24 * 90))),
             auto_migrate=_flag("REPORT_READY_AUTO_MIGRATE", True), workers=int(env("REPORT_READY_WORKERS", "2")),
-            billing_enabled=_flag("REPORT_READY_BILLING_ENABLED"),
-            stripe_secret_key=env("STRIPE_SECRET_KEY", ""), stripe_webhook_secret=env("STRIPE_WEBHOOK_SECRET", ""),
-            stripe_pro_price=env("STRIPE_PRO_PRICE_ID", ""), stripe_team_price=env("STRIPE_TEAM_PRICE_ID", ""),
             soffice_path=env("REPORT_READY_SOFFICE", ""),
             google_client_id=env("GOOGLE_CLIENT_ID", ""), google_client_secret=env("GOOGLE_CLIENT_SECRET", ""),
             resend_api_key=env("RESEND_API_KEY", ""), email_from=env("REPORT_READY_EMAIL_FROM", ""),
-            public_url=env("REPORT_READY_PUBLIC_URL", "http://127.0.0.1:8000").rstrip("/"))
+            public_url=env("REPORT_READY_PUBLIC_URL", "http://127.0.0.1:8000").rstrip("/"),
+            sentry_dsn=env("SENTRY_DSN", ""), sentry_environment=env("SENTRY_ENVIRONMENT", "production"))

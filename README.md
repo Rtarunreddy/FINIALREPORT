@@ -1,8 +1,8 @@
-# Report Ready 3.2 — Phase 3
+# Report Ready 3.3 — Free service
 
 Format a DOCX report with consistent body text, headings, tables, captions and inline images. Use a built-in template or learn common settings from a reference DOCX. The app creates a separate output file and keeps the original unchanged.
 
-Billing, job quotas, team invitations and shared templates are implemented in this release. Payments remain disabled by default. Start with **PHASE3_SETUP.md** for account/Stripe sandbox setup and **PHASE_REVIEW.md** for the complete Phase 1–4 audit.
+The hosted service has no paid checkout or subscription process. Each account gets five formatting/PDF jobs per UTC calendar month. Free team workspaces support up to five members and share the owner's five-job allowance. Donations are not configured yet; the Donate button is disabled until a destination is provided. See **PHASE3_SETUP.md** for deployment details and **PHASE_REVIEW.md** for remaining production-readiness work.
 
 ## Start on Windows
 
@@ -27,6 +27,8 @@ Report Ready 3 has accounts, a database and pluggable file storage. Copy the val
 5. Password recovery: create a Resend account, verify a sender domain, then set `RESEND_API_KEY` and `REPORT_READY_EMAIL_FROM` (for example, `Report Ready <no-reply@your-domain.com>`). Recovery links expire after 30 minutes and are single-use. Keep the API key in the hosting provider's secrets, not in source control.
 
 `render.yaml` provisions Postgres and the web service; add the bucket and credentials in the Render dashboard.
+
+Hosted deployments include privacy and terms pages at `/privacy.html` and `/terms.html`. Signed-in users can delete their account and associated live files from **Account and privacy**. Provider backup/log retention still follows the provider's configured lifecycle. Optional Sentry error reporting can be enabled with `SENTRY_DSN`; review its privacy settings before enabling it.
 
 ### Jobs, workers and PDF export
 

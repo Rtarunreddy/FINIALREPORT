@@ -13,11 +13,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, object_session
 from ..plans import effective_plan
 
-from ..db_models import PasswordResetToken, User, utcnow
+from ..db_models import Document, Feedback, PasswordResetToken, Subscription, Team, TeamInvite, TeamMember, User, utcnow
 from ..deps import current_user, get_db
 from ..security import COOKIE, check_password_strength, hash_password, make_session, normalize_email, read_session, verify_password
 from ..services import retention_hours
@@ -42,6 +42,12 @@ class ResetPassword(BaseModel):
     model_config = ConfigDict(extra="forbid")
     token: str = Field(min_length=32, max_length=128)
     password: str
+
+
+class DeleteAccount(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: str = Field(min_length=3, max_length=320)
+    password: str | None = Field(default=None, max_length=128)
 
 
 RESET_REQUEST_MESSAGE = "If an account with that email can reset a password, instructions will be sent shortly."
@@ -198,6 +204,49 @@ def logout():
 
 @router.get("/me")
 def me(user: User = Depends(current_user)): return public_user(user)
+
+
+@router.delete("/account")
+def delete_account(body: DeleteAccount, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if request.app.state.settings.local_mode:
+        raise HTTPException(400, "Account deletion is not used in local mode.")
+    try:
+        confirmed_email = normalize_email(body.email)
+    except ValueError as exc:
+        raise HTTPException(400, "Enter the email address on your account to confirm deletion.") from exc
+    if confirmed_email != user.email:
+        raise HTTPException(400, "The confirmation email does not match your account.")
+    if user.password_hash is not None and not verify_password(body.password or "", user.password_hash):
+        raise HTTPException(401, "Enter your current password to confirm account deletion.")
+
+    team_ids = db.scalars(select(Team.id).where(Team.owner_id == user.id)).all()
+    storage_keys = db.scalars(select(Document.storage_key).where(Document.owner_user_id == user.id)).all()
+    for key in storage_keys:
+        try:
+            request.app.state.storage.delete(key)
+        except Exception as exc:
+            LOG.exception("Account deletion could not remove stored object %s", key)
+            raise HTTPException(503, "Account deletion could not remove all stored files. Retry the request or contact support.") from exc
+
+    try:
+        if team_ids:
+            db.query(TeamMember).filter(TeamMember.team_id.in_(team_ids)).delete(synchronize_session=False)
+            db.query(Subscription).filter(Subscription.owner_type == "team", Subscription.owner_id.in_(team_ids)).delete(synchronize_session=False)
+            db.query(Team).filter(Team.id.in_(team_ids)).delete(synchronize_session=False)
+        db.query(TeamMember).filter(TeamMember.user_id == user.id).delete(synchronize_session=False)
+        db.query(TeamInvite).filter(TeamInvite.email == user.email).delete(synchronize_session=False)
+        db.query(Feedback).filter(Feedback.user_id == user.id).delete(synchronize_session=False)
+        db.query(Subscription).filter(Subscription.owner_type == "user", Subscription.owner_id == user.id).delete(synchronize_session=False)
+        db.delete(user)
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        LOG.exception("Account deletion database transaction failed for user %s", user.id)
+        raise HTTPException(503, "Account deletion could not be completed. Retry the request or contact support.") from exc
+
+    response = JSONResponse({"message": "Your account and associated files were deleted."})
+    response.delete_cookie(COOKIE, path="/")
+    return response
 
 
 def exchange_google_code(settings, code: str) -> dict:

@@ -1,20 +1,30 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from .. import pdf_export
 
 from ..db_models import Feedback, User
 from ..deps import current_user, get_db
 from ..models import Review
 from .documents import pdf_conversion_available
-from .. import pdf_export
 
 router = APIRouter(prefix="/api")
-VERSION = "3.2.0"
+VERSION = "3.3.0"
+LOG = logging.getLogger(__name__)
 
 
 @router.get("/health")
-def health(request: Request):
+def health(request: Request, db: Session = Depends(get_db)):
+    try:
+        db.execute(text("SELECT 1"))
+    except SQLAlchemyError as exc:
+        LOG.exception("Health check database query failed")
+        raise HTTPException(503, "Database is unavailable.") from exc
     return {"status": "ok", "version": VERSION, "pdfConversion": pdf_conversion_available(), "pdfExport": pdf_export.available(request.app.state.settings),
             "retentionHours": request.app.state.settings.free_retention_hours}
 

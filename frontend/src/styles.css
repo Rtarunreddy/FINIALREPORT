@@ -142,6 +142,12 @@ button,.primary,.quiet{
 .report p{margin:6px 0;font-size:14px}
 .report strong{display:inline-block;min-width:84px;color:var(--ink-soft);font-weight:600;font-size:12px;text-transform:none}
 
+.account-settings{margin:0 0 18px}
+.account-settings summary{cursor:pointer;font-weight:600}
+.delete-account-form{max-width:420px;margin-top:12px}
+.legal-links{display:flex;gap:16px;flex-wrap:wrap;margin:24px 0 0;font-size:13px}
+.legal-links a{color:var(--brand-deep)}
+
 @media(max-width:760px){
   .workspace{grid-template-columns:1fr}
   main{padding:20px 16px 40px}
@@ -179,6 +185,9 @@ button.link{background:none;border:0;padding:0;color:inherit;text-decoration:und
 .team-row input { flex: 1; min-width: 180px; }
 .plans-panel li { margin: 8px 0; overflow-wrap: anywhere; }
 @media(max-width:640px) { .plan-grid { grid-template-columns: 1fr; } }
+.donate-button{border:1px solid #d5ddf5;border-radius:9px;padding:8px 12px;background:#fff;color:var(--ink);font-weight:650}
+.donate-button:disabled{cursor:not-allowed;opacity:.65}
+.auth-donate{position:fixed;top:16px;right:24px;z-index:10}
 
 /* Refreshed workspace */
 :root{
@@ -235,6 +244,9 @@ aside{gap:16px}
 .panel,.stage{border:1px solid var(--rule);border-radius:16px;box-shadow:var(--shadow)}
 .panel{padding:20px}
 .stage{padding:26px 30px;min-height:520px}
+@media(min-width:761px){
+  .stage{position:sticky;top:20px;min-height:min(520px,calc(100vh - 40px));max-height:calc(100vh - 40px);overflow-y:auto;align-self:start}
+}
 .panel h2{font-size:14px;font-weight:700;letter-spacing:-.01em;color:var(--ink);margin-bottom:15px}
 .drop{border:1.5px dashed #bcc8df;border-radius:13px;background:#f8faff;padding:24px 16px;transition:all .18s ease}
 .drop:hover,.drop.dragging{border-color:var(--brand);background:#f0f3ff;box-shadow:inset 0 0 0 1px rgba(69,95,233,.08)}
@@ -314,7 +326,7 @@ button,.primary,.quiet{border-radius:9px;font-size:13px;font-weight:650;transiti
   main{padding:20px 16px 40px}
   header{align-items:flex-start}
   .workspace{grid-template-columns:1fr;gap:16px}
-  .stage{min-height:0;padding:22px}
+  .stage{position:static;max-height:none;overflow:visible;min-height:0;padding:22px}
   .empty-layout{grid-template-columns:minmax(0,1fr) minmax(140px,.7fr);gap:18px;min-height:0}
   .page-preview{width:100%;padding:0 4px 22px}
   .preview-sheet{min-height:235px;padding:24px 20px}

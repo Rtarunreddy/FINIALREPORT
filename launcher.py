@@ -18,7 +18,7 @@ URL = "http://127.0.0.1:8000"
 def running_app():
     try:
         with urllib.request.urlopen(URL + "/api/health", timeout=1) as response:
-            return json.load(response).get("version") == "3.2.0"
+            return json.load(response).get("status") == "ok"
     except Exception: return False
 
 
